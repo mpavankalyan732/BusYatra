@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>Bus_Booking__c</members>
+        <members>Bus_Passenger__c</members>
+        <name>CustomObject</name>
+    </types>
+    <types>
+        <members>Bus_Booking__c.*</members>
+        <members>Bus_Passenger__c.*</members>
+        <members>Contact.BusApp_Customer_Key__c</members>
+        <name>CustomField</name>
+    </types>
+    <version>68.0</version>
+</Package>

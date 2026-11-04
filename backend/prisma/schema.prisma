@@ -1,0 +1,403 @@
+// BusYatra — PostgreSQL schema (Prisma)
+// Money is stored as integer paise (₹1 = 100 paise) to avoid floating point errors.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AcType {
+  AC
+  NON_AC
+}
+
+enum SeatClass {
+  SEATER
+  SEMI_SLEEPER
+  SLEEPER
+}
+
+enum SeatKind {
+  SEATER
+  SLEEPER
+}
+
+enum Deck {
+  LOWER
+  UPPER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum ScheduleStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum LockStatus {
+  HELD // temporary reservation, expires at expiresAt
+  BOOKED // permanently sold
+}
+
+enum BookingStatus {
+  PENDING // seats held, awaiting passengers/payment
+  CONFIRMED
+  CANCELLED
+  EXPIRED // hold expired before payment
+}
+
+enum PaymentStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  UPI
+  SYSTEM // internal adjustments (reschedule difference / refunds)
+}
+
+enum PaymentKind {
+  BOOKING
+  ADJUSTMENT
+  REFUND
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+  NOT_CONFIGURED
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum RescheduleStatus {
+  QUOTED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  bookings     Booking[]
+}
+
+model City {
+  id                Int        @id @default(autoincrement())
+  name              String     @unique
+  state             String
+  slug              String     @unique
+  originRoutes      BusRoute[] @relation("RouteOrigin")
+  destinationRoutes BusRoute[] @relation("RouteDestination")
+}
+
+model Bus {
+  id                 String              @id @default(cuid())
+  operatorName       String
+  registrationNo     String              @unique
+  serviceCode        String              @unique
+  acType             AcType
+  seatClass          SeatClass
+  layoutTemplate     String
+  amenities          String[]
+  rating             Float               @default(4.2)
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  seats              BusSeat[]
+  schedules          BusSchedule[]
+  recurringSchedules RecurringSchedule[]
+
+  @@index([operatorName])
+}
+
+model BusSeat {
+  id         String      @id @default(cuid())
+  busId      String
+  seatNumber String
+  deck       Deck        @default(LOWER)
+  row        Int
+  col        Int
+  kind       SeatKind
+  priceDelta Int         @default(0) // paise added to schedule base fare
+  isWindow   Boolean     @default(false)
+  bus        Bus         @relation(fields: [busId], references: [id], onDelete: Cascade)
+  locks      SeatLock[]
+  passengers Passenger[]
+
+  @@unique([busId, seatNumber])
+  @@index([busId])
+}
+
+model BusRoute {
+  id                 String              @id @default(cuid())
+  originId           Int
+  destinationId      Int
+  distanceKm         Int
+  durationMinutes    Int
+  boardingPoints     String[]
+  droppingPoints     String[]
+  isActive           Boolean             @default(true)
+  origin             City                @relation("RouteOrigin", fields: [originId], references: [id])
+  destination        City                @relation("RouteDestination", fields: [destinationId], references: [id])
+  schedules          BusSchedule[]
+  recurringSchedules RecurringSchedule[]
+
+  @@unique([originId, destinationId])
+}
+
+/// A daily repeating departure. A background job materialises it into BusSchedule rows.
+model RecurringSchedule {
+  id            String   @id @default(cuid())
+  busId         String
+  routeId       String
+  departureTime String // "HH:mm" in IST
+  baseFare      Int // paise
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  bus           Bus      @relation(fields: [busId], references: [id], onDelete: Cascade)
+  route         BusRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([busId, routeId, departureTime])
+}
+
+model BusSchedule {
+  id                    String              @id @default(cuid())
+  busId                 String
+  routeId               String
+  departureAt           DateTime
+  arrivalAt             DateTime
+  baseFare              Int // paise per seat
+  status                ScheduleStatus      @default(SCHEDULED)
+  createdAt             DateTime            @default(now())
+  bus                   Bus                 @relation(fields: [busId], references: [id], onDelete: Cascade)
+  route                 BusRoute            @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  locks                 SeatLock[]
+  bookings              Booking[]
+  rescheduleFrom        RescheduleRequest[] @relation("RescheduleOld")
+  rescheduleTo          RescheduleRequest[] @relation("RescheduleNew")
+
+  @@unique([busId, departureAt])
+  @@index([routeId, departureAt])
+}
+
+/// One row per occupied seat on a schedule. The unique (scheduleId, seatId)
+/// constraint is the hard guarantee that a seat can never be sold twice.
+model SeatLock {
+  id                  String             @id @default(cuid())
+  scheduleId          String
+  seatId              String
+  bookingId           String?
+  rescheduleRequestId String?
+  status              LockStatus
+  expiresAt           DateTime? // null once BOOKED
+  createdAt           DateTime           @default(now())
+  schedule            BusSchedule        @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  seat                BusSeat            @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  booking             Booking?           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  rescheduleRequest   RescheduleRequest? @relation(fields: [rescheduleRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, seatId])
+  @@index([bookingId])
+  @@index([status, expiresAt])
+}
+
+model Booking {
+  id                 String              @id @default(cuid())
+  bookingCode        String?             @unique // e.g. BUS202611030001, assigned on confirmation
+  accessToken        String              @unique // secret given to the booker; required for draft access
+  ticketToken        String?             @unique // opaque id encoded in the QR code
+  userId             String?
+  scheduleId         String
+  status             BookingStatus       @default(PENDING)
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
+  seatCount          Int
+  baseAmount         Int                 @default(0)
+  taxAmount          Int                 @default(0)
+  feeAmount          Int                 @default(0)
+  totalAmount        Int                 @default(0)
+  lockExpiresAt      DateTime
+  confirmedAt        DateTime?
+  cancelledAt        DateTime?
+  rescheduleCount    Int                 @default(0)
+  sfSyncStatus       SyncStatus          @default(PENDING)
+  sfSyncAttempts     Int                 @default(0)
+  sfNextAttemptAt    DateTime?
+  sfLastError        String?
+  sfRecordId         String?
+  sfSyncedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  user               User?               @relation(fields: [userId], references: [id])
+  schedule           BusSchedule         @relation(fields: [scheduleId], references: [id])
+  passengers         Passenger[]
+  payments           Payment[]
+  history            BookingHistory[]
+  rescheduleRequests RescheduleRequest[]
+  emails             EmailNotification[]
+  locks              SeatLock[]
+  verificationCodes  VerificationCode[]
+  agentSessions      AgentSession[]
+
+  @@index([status])
+  @@index([contactEmail])
+  @@index([userId])
+  @@index([sfSyncStatus, sfNextAttemptAt])
+}
+
+model Passenger {
+  id        String   @id @default(cuid())
+  bookingId String
+  seatId    String
+  name      String
+  age       Int
+  gender    Gender
+  createdAt DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  seat      BusSeat  @relation(fields: [seatId], references: [id])
+
+  @@unique([bookingId, seatId])
+}
+
+/// Card numbers and CVVs are NEVER stored. Only a masked instrument and a simulated provider token.
+model Payment {
+  id               String        @id @default(cuid())
+  bookingId        String
+  kind             PaymentKind   @default(BOOKING)
+  method           PaymentMethod
+  status           PaymentStatus @default(CREATED)
+  amount           Int
+  currency         String        @default("INR")
+  idempotencyKey   String        @unique
+  provider         String        @default("demo")
+  providerRef      String?
+  maskedInstrument String?
+  failureReason    String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  booking          Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  // Partial unique index "Payment_one_success_per_booking" is added in the migration SQL.
+}
+
+model BookingHistory {
+  id        String   @id @default(cuid())
+  bookingId String
+  action    String
+  actor     String
+  details   Json?
+  createdAt DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+model RescheduleRequest {
+  id             String           @id @default(cuid())
+  bookingId      String
+  oldScheduleId  String
+  newScheduleId  String
+  newSeatIds     String[]
+  newBaseAmount  Int
+  newTaxAmount   Int
+  newFeeAmount   Int
+  newTotalAmount Int
+  fareDifference Int // new total - old total (paise, may be negative)
+  rescheduleFee  Int
+  netPayable     Int // fareDifference + fee (negative = refund)
+  status         RescheduleStatus @default(QUOTED)
+  channel        String
+  expiresAt      DateTime
+  completedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  booking        Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  oldSchedule    BusSchedule      @relation("RescheduleOld", fields: [oldScheduleId], references: [id])
+  newSchedule    BusSchedule      @relation("RescheduleNew", fields: [newScheduleId], references: [id])
+  locks          SeatLock[]
+
+  @@index([bookingId, status])
+}
+
+model EmailNotification {
+  id            String      @id @default(cuid())
+  bookingId     String?
+  type          String // BOOKING_CONFIRMATION | RESCHEDULE_CONFIRMATION | CANCELLATION
+  toEmail       String
+  subject       String
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  lastError     String?
+  sentAt        DateTime?
+  transport     String?
+  createdAt     DateTime    @default(now())
+  booking       Booking?    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+}
+
+/// One-time passcodes for verifying booking ownership (reschedule flow).
+model VerificationCode {
+  id         String    @id @default(cuid())
+  bookingId  String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  booking    Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+/// Conversation session with the rescheduling agent (Agentforce or the labelled mock).
+model AgentSession {
+  id                String   @id @default(cuid())
+  bookingId         String
+  provider          String // AGENTFORCE | MOCK_AGENT
+  providerSessionId String?
+  sequenceId        Int      @default(0)
+  state             Json?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  booking           Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+/// Atomic per-day counter used to build booking codes like BUS202611030001.
+model DailyCounter {
+  day   String @id
+  value Int
+}

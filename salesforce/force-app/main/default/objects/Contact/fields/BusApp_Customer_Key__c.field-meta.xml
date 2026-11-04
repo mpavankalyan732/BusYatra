@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>BusApp_Customer_Key__c</fullName>
+    <label>BusApp Customer Key</label>
+    <description>Lower-cased email from the BusYatra app; external ID used for idempotent upserts.</description>
+    <type>Text</type>
+    <length>120</length>
+    <required>false</required>
+    <externalId>true</externalId>
+    <unique>true</unique>
+    <caseSensitive>false</caseSensitive>
+</CustomField>

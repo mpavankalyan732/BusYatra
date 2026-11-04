@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #fff1f2;
+  --color-brand-100: #ffe0e3;
+  --color-brand-200: #ffc6cc;
+  --color-brand-500: #e8384f;
+  --color-brand-600: #d7263d;
+  --color-brand-700: #b31b30;
+  --color-brand-800: #8f1728;
+  --color-ink-900: #14161f;
+  --color-ink-700: #374151;
+  --color-ink-500: #6b7280;
+  --color-seat-available: #16a34a;
+  --color-seat-selected: #2563eb;
+  --color-seat-booked: #9ca3af;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+body {
+  @apply bg-slate-50 text-ink-900 antialiased;
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
+  }
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm;
+  }
+  .input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition;
+  }
+}
+
+/* road dashes for the hero illustration */
+@keyframes road {
+  from { transform: translateX(0); }
+  to { transform: translateX(-80px); }
+}
+.road-dashes { animation: road 0.9s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .road-dashes { animation: none; }
+}

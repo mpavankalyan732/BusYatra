@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Booking_ID__c</fullName>
+    <label>Booking ID</label>
+    <description>BusYatra booking code (e.g. BUS202611030001). External ID.</description>
+    <type>Text</type>
+    <length>20</length>
+    <required>false</required>
+    <externalId>true</externalId>
+    <unique>true</unique>
+    <caseSensitive>false</caseSensitive>
+</CustomField>
