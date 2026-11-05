@@ -10,6 +10,7 @@ import * as bookings from '../controllers/bookingController.js';
 import * as payments from '../controllers/paymentController.js';
 import * as adminCtl from '../controllers/adminController.js';
 import { activeProvider } from '../services/agent/agentService.js';
+import * as rsCtl from '../controllers/rescheduleController.js';
 
 const router = Router();
 const limiter = (max, windowMin = 15) => rateLimit({ windowMs: windowMin * 60_000, max, standardHeaders: true, legacyHeaders: false });
@@ -108,6 +109,17 @@ router.post(
   h(payments.verify),
 );
 router.post('/payments/upi/verify', limiter(60), validate({ body: z.object({ upiId: z.string().min(3).max(80) }) }), payments.verifyUpi);
+
+// ---------------------------------------------------------------- Agentforce actions (Salesforce Apex -> backend)
+const agentActions = Router();
+agentActions.use(limiter(300));
+agentActions.use(requireAgentApiKey);
+const who = { bookingCode: z.string().trim().max(40).optional(), email: z.string().trim().max(120).optional(), verificationToken: z.string().max(2000).optional() };
+agentActions.post('/get-booking', validate({ body: z.object(who) }), h(rsCtl.actionGetBooking));
+agentActions.post('/find-alternatives', validate({ body: z.object({ ...who, newDate: dateStr }) }), h(rsCtl.actionFindAlternatives));
+agentActions.post('/quote', validate({ body: z.object({ ...who, newScheduleId: id }) }), h(rsCtl.actionQuote));
+agentActions.post('/confirm', validate({ body: z.object({ ...who, rescheduleRequestId: id, customerConfirmed: z.boolean() }) }), h(rsCtl.actionConfirm));
+router.use('/agent-actions', agentActions);
 
 // ---------------------------------------------------------------- admin
 const admin = Router();
