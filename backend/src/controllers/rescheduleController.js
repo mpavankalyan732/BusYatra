@@ -3,6 +3,7 @@ import * as rs from '../services/reschedule/rescheduleService.js';
 import * as agent from '../services/agent/agentService.js';
 import { verifyRescheduleToken } from '../middleware/auth.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
+import { prisma } from '../lib/prisma.js';
 
 // ---------- ownership verification (OTP)
 export async function startVerification(req, res) {
@@ -47,16 +48,28 @@ export async function endAgent(req, res) {
   res.json({ success: true });
 }
 
-// ---------- Agentforce action callbacks (Salesforce Apex -> backend). Require API key + customer's verification token.
-function grant(req) {
-  const p = verifyRescheduleToken(req.body.verificationToken);
-  if (!p) throw unauthorized('Customer verification token is missing or expired');
-  if (req.body.bookingCode && req.body.bookingCode.toUpperCase() !== p.bookingCode) throw forbidden('Booking does not match the verified customer');
-  return p;
+// ---------- Agentforce action callbacks (Salesforce Apex -> backend).
+// Always require the shared API key (route middleware). The customer is identified either by
+// an OTP verification token (website chat) or by Booking ID + the contact email on the booking
+// (Salesforce Enhanced Chat, where the agent collects both from the customer).
+async function grant(req) {
+  const token = req.body.verificationToken;
+  if (token) {
+    const p = verifyRescheduleToken(token);
+    if (!p) throw unauthorized('Customer verification token is missing or expired');
+    if (req.body.bookingCode && String(req.body.bookingCode).trim().toUpperCase() !== p.bookingCode) throw forbidden('Booking does not match the verified customer');
+    return p;
+  }
+  const code = String(req.body.bookingCode || '').trim().toUpperCase();
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (!code || !email) throw unauthorized('Booking ID and the email used for the booking are required');
+  const b = await prisma.booking.findUnique({ where: { bookingCode: code }, select: { id: true, bookingCode: true, contactEmail: true } });
+  if (!b || String(b.contactEmail || '').toLowerCase() !== email) throw forbidden('The Booking ID and email do not match our records');
+  return { bookingId: b.id, bookingCode: b.bookingCode };
 }
 
 export async function actionGetBooking(req, res) {
-  const g = grant(req);
+  const g = await grant(req);
   const { booking, blocker, policy } = await rs.getBookingForAgent(g.bookingId);
   res.json({
     bookingCode: booking.bookingCode,
@@ -77,7 +90,7 @@ export async function actionGetBooking(req, res) {
 }
 
 export async function actionFindAlternatives(req, res) {
-  const g = grant(req);
+  const g = await grant(req);
   const alt = await rs.findAlternatives(g.bookingId, req.body.newDate);
   res.json({
     date: alt.date,
@@ -96,7 +109,7 @@ export async function actionFindAlternatives(req, res) {
 }
 
 export async function actionQuote(req, res) {
-  const g = grant(req);
+  const g = await grant(req);
   const q = await rs.createQuote(g.bookingId, req.body.newScheduleId, { channel: 'AGENTFORCE' });
   res.json({
     rescheduleRequestId: q.requestId,
@@ -111,7 +124,7 @@ export async function actionQuote(req, res) {
 }
 
 export async function actionConfirm(req, res) {
-  const g = grant(req);
+  const g = await grant(req);
   const r = await rs.confirmReschedule(g.bookingId, req.body.rescheduleRequestId, { customerConfirmed: req.body.customerConfirmed === true, actor: 'AGENTFORCE' });
   res.json({
     success: true,
