@@ -45,3 +45,17 @@ export function requireAgentApiKey(req, _res, next) {
   }
   return next();
 }
+
+/** Short-lived token proving a customer verified ownership of one booking (email OTP). */
+export const signRescheduleToken = (bookingId, bookingCode) =>
+  jwt.sign({ sub: bookingId, bookingCode, scope: 'reschedule' }, config.jwtSecret, { expiresIn: '30m' });
+
+export function verifyRescheduleToken(token) {
+  if (!token) return null;
+  try {
+    const p = jwt.verify(String(token), config.jwtSecret);
+    return p.scope === 'reschedule' ? { bookingId: p.sub, bookingCode: p.bookingCode } : null;
+  } catch {
+    return null;
+  }
+}
