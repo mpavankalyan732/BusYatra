@@ -30,12 +30,19 @@
           console.error('Error loading Embedded Messaging: ', err);
         }
       }
+      var ESW_SRC = 'https://orgfarm-3181b9f7b4-dev-ed.develop.my.site.com/ESWBusYatraWebC1793872994900/assets/js/bootstrap.min.js';
+      var eswTries = 0, eswInitDone = false;
       function loadEmbeddedMessaging() {
+        if (eswInitDone || window.embeddedservice_bootstrap) return;
+        eswTries++;
         var s = document.createElement('script');
-        s.src = 'https://orgfarm-3181b9f7b4-dev-ed.develop.my.site.com/ESWBusYatraWebC1793872994900/assets/js/bootstrap.min.js';
+        s.src = ESW_SRC + (eswTries > 1 ? '?retry=' + eswTries : '');
         s.async = true;
-        s.onload = initEmbeddedMessaging;
+        s.onload = function () { if (!eswInitDone) { eswInitDone = true; initEmbeddedMessaging(); } };
+        s.onerror = function () { if (eswTries < 4) setTimeout(loadEmbeddedMessaging, 3000); };
         document.body.appendChild(s);
+        // Salesforce site can be slow to wake up: retry if the chat has not loaded in 15 seconds
+        setTimeout(function () { if (!window.embeddedservice_bootstrap && eswTries < 4) loadEmbeddedMessaging(); }, 15000);
       }
       if (document.readyState === 'complete') { loadEmbeddedMessaging(); }
       else { window.addEventListener('load', loadEmbeddedMessaging); }
