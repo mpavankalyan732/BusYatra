@@ -7,31 +7,40 @@
     <meta name="description" content="BusYatra — search, compare and book intercity bus tickets." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://busyatra-api.onrender.com" crossorigin />
+    <link rel="preconnect" href="https://orgfarm-3181b9f7b4-dev-ed.develop.my.site.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <title>BusYatra — Book Bus Tickets</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script type='text/javascript'>
+    <!-- Salesforce Enhanced Chat (BusYatra Reschedule Agent): loaded AFTER the page so it never blocks the site -->
+    <script type="text/javascript">
       function initEmbeddedMessaging() {
         try {
           embeddedservice_bootstrap.settings.language = 'en_US';
-
           embeddedservice_bootstrap.init(
             '00Dfj00000mbzot',
             'BusYatra_Web_Chat',
             'https://orgfarm-3181b9f7b4-dev-ed.develop.my.site.com/ESWBusYatraWebC1793872994900',
-            {
-              scrt2URL: 'https://orgfarm-3181b9f7b4-dev-ed.develop.my.salesforce-scrt.com'
-            }
+            { scrt2URL: 'https://orgfarm-3181b9f7b4-dev-ed.develop.my.salesforce-scrt.com' }
           );
         } catch (err) {
           console.error('Error loading Embedded Messaging: ', err);
         }
-      };
+      }
+      function loadEmbeddedMessaging() {
+        var s = document.createElement('script');
+        s.src = 'https://orgfarm-3181b9f7b4-dev-ed.develop.my.site.com/ESWBusYatraWebC1793872994900/assets/js/bootstrap.min.js';
+        s.async = true;
+        s.onload = initEmbeddedMessaging;
+        document.body.appendChild(s);
+      }
+      if (document.readyState === 'complete') { loadEmbeddedMessaging(); }
+      else { window.addEventListener('load', loadEmbeddedMessaging); }
+      // Wake the free Render API early so the first search is not slow
+      try { fetch('https://busyatra-api.onrender.com/', { mode: 'no-cors' }); } catch (e) {}
     </script>
-    <script type='text/javascript' src='https://orgfarm-3181b9f7b4-dev-ed.develop.my.site.com/ESWBusYatraWebC1793872994900/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
-    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
   </body>
 </html>
